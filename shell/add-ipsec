@@ -1,0 +1,220 @@
+#!/usr/bin/python3
+# encoding:utf-8
+
+import os
+import sys
+import getopt
+import json
+import subprocess
+import collections
+from svxutil import *
+from svxutil.dhgoup import dhrelation
+
+
+
+# 获取命令参数
+try:
+    opts, args = getopt.getopt(sys.argv[1:], "f:", ["help", "file="], )
+except getopt.GetoptError as e:
+    print(e.msg)
+    sys.exit(1)
+
+# 读取文件名
+for o, a in opts:
+    if o in ("-f", "--file"):
+        fileName = a
+
+# 加载json配置文件
+try:
+    ipsec_dict = json.load(open(fileName))
+except:
+    sys.stderr.write("json加载失败\n")
+    sys.exit(1)
+
+success = True
+# 有序字典
+ipsec_cmd = collections.OrderedDict()
+leftsubnetset = set()
+rightsubnetset = set()
+
+try:
+    # long
+    ipsec_id = int(ipsec_dict['id'])
+    keep_alive = ipsec_dict.get('keepAlive', 0)
+    encry_alive = ipsec_dict.get('encryptAlive',0)
+
+    # string
+    src_ip = ipsec_dict['srcIp']
+    dst_ip = ipsec_dict['dstIp']
+    mode = ipsec_dict['mode']
+    method = ipsec_dict['authMethod'].lower()
+    auth_password = ipsec_dict['authPassword']
+    ike_version = int(ipsec_dict['ikeVersion'])
+    ike_mode = ipsec_dict['ikeMode']
+    peer_type = ipsec_dict['peerType']
+    peer_id = ipsec_dict.get('peerId', '')
+    local_id = ipsec_dict.get('localId', '')
+    #full_forward_confiden_tiality = ipsec_dict['fullForwardConfidentiality']
+
+    # boolean
+    peer_status_probe = ipsec_dict.get('peerStatusProbe', 'clear')
+    rebroadcast_monitor = ipsec_dict.get('rebroadcastMonitor', 'no')
+
+    #list
+    ipsec_cidr_list = ipsec_dict['ipsecTunnelCidrList']
+
+    atep_one_encrypt_auth = ipsec_dict['stepOneEncryptAuth']
+    step_one_dh_group = ipsec_dict.get('stepOneDhGroup', [])
+
+    step_two_encrypt_auth = ipsec_dict['stepTwoEncryptAuth']
+    step_two_dh_group = ipsec_dict.get('stepTwoDhGroup', [])
+
+    for ipsectunnelcidr in ipsec_cidr_list:
+        leftsubnetset.add(cidr_format(ipsectunnelcidr["localIp"]))
+        rightsubnetset.add(cidr_format(ipsectunnelcidr["remoteIp"]))
+    leftsubnet = ','.join(list(leftsubnetset))
+    rightsubnet = ','.join(list(rightsubnetset))
+
+    # ike
+    ikeset = set()
+    steponeencryptauth = []
+    for oneauth in atep_one_encrypt_auth:
+        encrypt = oneauth['encrypt'].lower()
+        authentication = oneauth['authentication'].lower()
+        one_encrypt_authentication = '%s-%s' % (encrypt, authentication)
+        steponeencryptauth.append(one_encrypt_authentication)
+    steponedhgroup = dhrelation(step_one_dh_group)
+    for x in steponeencryptauth:
+        if len(steponedhgroup) > 0:
+            for y in steponedhgroup:
+                ikestr = '%s-%s' % (x, y)
+                ikeset.add(ikestr)
+        else:
+            ikeset.add(x)
+
+    ike = ','.join(list(ikeset))
+
+    # esp
+    espset = set()
+    steptwoencryptauth = []
+    for twoauth in step_two_encrypt_auth:
+        encrypt = twoauth['encrypt'].lower()
+        authentication = twoauth['authentication'].lower()
+        two_encrypt_authentication = '%s-%s' % (encrypt, authentication)
+        steptwoencryptauth.append(two_encrypt_authentication)
+
+    steptwodhgroup = dhrelation(step_two_dh_group)
+
+    for x in steptwoencryptauth:
+        if len(steptwodhgroup) > 0:
+            for y in steptwodhgroup:
+                espstr = '%s-%s' % (x, y)
+                espset.add(espstr)
+        else:
+            espset.add(x)
+
+    esp = ','.join(list(espset))
+
+except Exception as e:
+    print(e)
+    success = False
+    sys.stderr.write("json解析错误！\n")
+
+if ike_mode == 'aggressive':
+    aggressive = "yes"
+else:
+    aggressive = "no"
+
+if rebroadcast_monitor:
+    rekey = "yes"
+else:
+    rekey = "no"
+
+ipsec_cmd['type'] = mode
+
+#判断ikve类型
+if ike_version  == 2:
+    ipsec_cmd['keyexchange'] = 'ikev2'
+
+else:
+    ipsec_cmd['keyexchange'] = 'ikev1'
+    ipsec_cmd['rekey'] = rekey
+    ipsec_cmd['aggressive'] = aggressive
+    if keep_alive > 0:
+        ipsec_cmd['dpddelay'] = keep_alive
+
+
+#存活时间
+if encry_alive > 0:
+    ipsec_cmd['ikelifetime'] = encry_alive
+
+#通用
+if src_ip == '0.0.0.0' or src_ip == '%default':
+    ipsec_cmd['left'] = '%defaultroute'
+else:
+    ipsec_cmd['left'] = src_ip
+
+if local_id:
+    ipsec_cmd['leftid'] = local_id
+ipsec_cmd['leftsubnet'] = leftsubnet
+ipsec_cmd['leftauth'] =  method
+ipsec_cmd['leftfirewall'] =  "no"
+
+ipsec_cmd['right'] = dst_ip
+if peer_type == "special" and peer_id:
+    ipsec_cmd['rightid'] = peer_id
+
+ipsec_cmd['rightsubnet'] = rightsubnet
+ipsec_cmd['rightauth'] = method
+ipsec_cmd['esp'] = esp
+ipsec_cmd['ike'] = ike
+ipsec_cmd['auto'] = "start"
+
+
+#判断整个过程是否出错
+if not success:
+    sys.exit(2)
+
+name = 'ipsec%d' % ipsec_id
+
+# 判断存密钥路径
+if not os.path.exists("/etc/strongswan/ipsec.secrets.d"):
+    os.makedirs("/etc/strongswan/ipsec.secrets.d")
+# 将密钥写入ipsec.secrets
+path = "/etc/strongswan/ipsec.secrets.d/%s.secrets" % name
+keyname = auth_password
+with open(path, 'w') as ipsec_secrets:
+    ipsec_secrets.write('%s : PSK "%s"\n' % (dst_ip, keyname))
+    ipsec_secrets.write('@%s : PSK "%s"\n' % (peer_id if peer_id else dst_ip, keyname))
+ipsec_secrets.close()
+
+# 判断conf路径
+if not os.path.exists("/etc/strongswan/conntions.d"):
+    os.makedirs("/etc/strongswan/conntions.d")
+# 将用户设置写入ipsec.conf
+conn = 'conn %s \n' % name
+path1 = "/etc/strongswan/conntions.d/%s.conf" % name
+
+with open(path1, 'w') as ipsec_conf:
+    ipsec_conf.write(conn)
+    for k, v in ipsec_cmd.items():
+        ipsec_conf.write('    %s=%s \n' % (k, v))
+
+ipsec_conf.close()
+
+#删除json文件
+os.remove(fileName)
+try:
+    status = subprocess.check_call('systemctl enable strongswan; strongswan reload >/dev/null 2>&1;strongswan down %s;strongswan up %s & ' % (name, name), shell=True)
+    if not status == 0:
+        sys.exit(3)
+except:
+    sys.exit(4)
+
+try:
+    subprocess.check_call('/usr/local/*/lib/update_ipsec_policy.sh', shell=True)
+except:
+    pass
+
+# os.popen("strongswan down %s;strongswan up %s &" % (name, name))
+sys.exit(0)

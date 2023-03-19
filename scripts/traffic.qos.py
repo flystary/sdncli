@@ -14,15 +14,16 @@ qos_run_root = '/var/run/*/qos'
 
 def get_qos_class_info():
     qos_class_mapping = {}
-    cmd = "ls %s/class*.conf" % qos_root
-    status, result = subprocess.getstatusoutput(cmd)
-    if status != 0:
-        return {}
+    if os.path.exists(qos_root):
+        cmd = "ls %s/class*.conf" % qos_root
+        status, tmp = subprocess.getstatusoutput(cmd)
+        if status != 0:
+            return {}
 
-    res = re.split(r'\n', result)
-    for file in res:
-        class_id, class_type = get_class_id_type_by_file(file)
-        qos_class_mapping[class_id] = class_type
+        res = re.split(r'\n', tmp)
+        for file in res:
+            class_id, class_type = get_class_id_type_by_file(file)
+            qos_class_mapping[class_id] = class_type
 
     return qos_class_mapping
 
@@ -50,17 +51,18 @@ def get_class_id_type_by_file(qosfile):
 
     return class_id, class_type
 
-def get_qos_tmps_by_interface(interface):
-    cmd = "tc -s class show dev %s" % interface
-    print(cmd)
-    status, result = subprocess.getstatusoutput(cmd)
-    if status != 0:
-        return ''
+def get_qos_tmps_by_interface(dev):
+    tmp_result = ""
+    cmd = "/usr/sbin/tc -s class show dev %s" % dev
+    try:
+        tmp_result = subprocess.getoutput(cmd)
+    except:
+        pass
 
-    return result
+    return tmp_result
 
-def get_id_and_tx_dict(result):
-    res = re.split(r'\n\n', result)
+def get_id_and_tx_dict(tmp):
+    res = re.split(r'\n\n', tmp)
     tx_dict = {}
     for piece in res:
         traffic_tx = 0
@@ -68,50 +70,52 @@ def get_id_and_tx_dict(result):
 
         for line in piece.splitlines():
             tmp = line.split()
-            if 'class' in line:
+            if "class" in line:
                 cls = tmp[2]
-            if 'Sent' in line:
+            if "Sent" in line:
                 traffic_tx = tmp[1]
         if len(cls) == 0 and traffic_tx == 0:
             continue
         tx_dict[cls] = traffic_tx
 
-    # 删除1:1 1:255
-    if '1:1' in tx_dict:
+    # 删除1:1 1:255 1:10
+    if "1:1" in tx_dict:
         tx_dict.pop("1:1")
-    #if '1:10' in tx_dict:
-    #    tx_dict.pop("1:10")
-    if '1:255' in tx_dict:
+    if "1:10" in tx_dict:
+        tx_dict.pop("1:10")
+    if "1:255" in tx_dict:
         tx_dict.pop("1:255")
 
     return tx_dict
 
 def get_tunnel_interfaces_by_file():
     interfaces = set()
-    for dir in os.listdir(tunnel_root):
-        try:
-            id = int(dir)
-            if id > 0 :
-                tunnels = 'ipip%ds' % id
-                tunneli = 'ipip%di' % id
+    if os.path.exists(tunnel_root):
+        for dir in os.listdir(tunnel_root):
+            try:
+                id = int(dir)
+                if id > 0 :
+                    tunnels = "ipip%ds" % id
+                    tunneli = "ipip%di" % id
 
-                interfaces.add(tunnels)
-                interfaces.add(tunneli)
-        except:
-            continue
+                    interfaces.add(tunnels)
+                    interfaces.add(tunneli)
+            except:
+                continue
 
     return interfaces
 
 def get_gilnk_interfaces_by_file():
     interfaces = set()
-    for dir in os.listdir(glink_root):
-        try:
-            id = int(dir)
-            if id > 0 :
-                glink = 'glink%s' % id
-                interfaces.add(glink)
-        except:
-            continue
+    if os.path.exists(glink_root):
+        for dir in os.listdir(glink_root):
+            try:
+                id = int(dir)
+                if id > 0 :
+                    glink = "glink%s" % id
+                    interfaces.add(glink)
+            except:
+                continue
     return interfaces
 
 def get_network_interfaces_by_file():
@@ -133,7 +137,7 @@ def get_interfaces_by_class_type(class_type):
     interfaces = set()
     if class_type == "wan":
         netwrk_dict = get_network_interfaces_by_file()
-        for wan in ['WAN1', 'WAN2','MOBILE4G', 'MOBILE5G']:
+        for wan in ["WAN1", "WAN2","MOBILE4G", "MOBILE5G"]:
             interface = netwrk_dict.get(wan, "")
             if interface == "":
                 continue
@@ -169,8 +173,11 @@ if not os.path.exists(qos_run_root):
     os.makedirs(qos_run_root)
 
 for id, class_type in qos_dict.items():
-    class_id = '1:%s' % id
+    class_id = "1:%s" % id
     interfaces = get_interfaces_by_class_type(class_type)
+
+    if len(interfaces) == 0:
+        continue
     '''
     vlan7 {'vlan7'}
     lan2  {'fm1-mac6'}
@@ -178,6 +185,7 @@ for id, class_type in qos_dict.items():
     interconnection {'glink10004', 'ipip10003s', 'ipip10003i'}
     '''
     stx = 0
+    results = []
     for interface in interfaces:
         result = get_qos_tmps_by_interface(interface)
         tx_dict = get_id_and_tx_dict(result)
@@ -188,13 +196,20 @@ for id, class_type in qos_dict.items():
         '''
         tx = tx_dict.get(class_id, 0)
         stx = int(tx) + stx
-
+        results.append(result)
     # write file
     class_run_file  = "%s/%s" % (qos_run_root, id)
-    class_run_file1 = "%s/%s.1" % (qos_run_root, id)
+    class_run_tmp   = "%s/%s.tmp" % (qos_run_root, id)
+
+    class_run_file_old = "%s/%s.1" % (qos_run_root, id)
+
+    with open(class_run_tmp, 'w') as fw:
+        for res in results:
+            fw.write("%s\n" % res)
+        fw.close()
 
     if os.path.exists(class_run_file):
-        os.rename(class_run_file, class_run_file1)
+        os.rename(class_run_file, class_run_file_old)
 
     with open(class_run_file, 'w') as f:
-        f.write('%s\n' % stx)
+        f.write("%s\n" % stx)

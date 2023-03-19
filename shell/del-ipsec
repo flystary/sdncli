@@ -1,0 +1,47 @@
+#!/usr/bin/python3
+# encoding:utf-8
+
+import os
+import sys
+import getopt
+import subprocess
+
+# 获取命令参数
+try:
+    opts, args = getopt.getopt(sys.argv[1:], "id:", ["help", "id="], )
+except getopt.GetoptError as e:
+    print(e.msg)
+    sys.exit(1)
+
+# 读取文件名
+for o, a in opts:
+    if o in ("--id", "--id"):
+        ipsec_id = a
+
+name = 'ipsec%s' % ipsec_id
+#down
+try:
+    subprocess.check_call('strongswan down %s' % name, shell=True)
+except:
+    pass
+
+path1 = "/etc/strongswan/ipsec.secrets.d/%s.secrets" % name
+path2 = "/etc/strongswan/conntions.d/%s.conf" % name
+for path in path1,path2:
+    if os.path.exists(path):
+        os.remove(path)
+
+#reload
+try:
+    status = subprocess.check_call('strongswan reload >/dev/null 2>&1' , shell=True)
+    if not status == 0:
+        sys.exit(3)
+except:
+    sys.exit(4)
+
+try:
+    status = subprocess.check_call('/usr/local/*/lib/update_ipsec_policy.sh')
+except:
+    pass
+
+sys.exit(0)
