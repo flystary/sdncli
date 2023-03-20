@@ -3,7 +3,9 @@
 import os
 import re
 import sys
-import json
+import time
+import sched
+import shutil
 import subprocess
 
 qos_root     = "/usr/local/*/conf.d/qos"
@@ -65,18 +67,22 @@ def get_id_and_tx_dict(tmp):
     res = re.split(r'\n\n', tmp)
     tx_dict = {}
     for piece in res:
-        traffic_tx = 0
+        tx  = int(0)
         cls = ""
 
         for line in piece.splitlines():
             tmp = line.split()
-            if "class" in line:
+            if tmp[0] == "class" and tmp[1] == "htb" and tmp[3] == "parent":
                 cls = tmp[2]
-            if "Sent" in line:
-                traffic_tx = tmp[1]
-        if len(cls) == 0 and traffic_tx == 0:
+            elif tmp[0] == "Sent" and tmp[2] == "bytes":
+                tx = int(tmp[1])
+            else:
+                continue
+
+        if len(cls) == 0:
             continue
-        tx_dict[cls] = traffic_tx
+
+        tx_dict[cls] = tx
 
     # 删除1:1 1:255 1:10
     if "1:1" in tx_dict:
@@ -161,6 +167,7 @@ def get_interfaces_by_class_type(class_type):
 
     return interfaces
 
+# def do():
 # qos配置文件
 qos_dict = get_qos_class_info()
 '''
@@ -172,6 +179,7 @@ if len(qos_dict) == 0:
 if not os.path.exists(qos_run_root):
     os.makedirs(qos_run_root)
 
+ret = {}
 for id, class_type in qos_dict.items():
     class_id = "1:%s" % id
     interfaces = get_interfaces_by_class_type(class_type)
@@ -184,10 +192,17 @@ for id, class_type in qos_dict.items():
     wan   {'usb4g', 'fm1-mac1', 'usb5g', 'fm1-mac2'}
     interconnection {'glink10004', 'ipip10003s', 'ipip10003i'}
     '''
-    stx = 0
+
+    sum_tx = int(0)
     results = []
     for interface in interfaces:
-        result = get_qos_tmps_by_interface(interface)
+        if interface in ret.keys():
+            result = ret[interface]
+        else:
+            result = get_qos_tmps_by_interface(interface)
+            ret[interface] = result
+
+        results.append(result)
         tx_dict = get_id_and_tx_dict(result)
         '''
         {}
@@ -195,21 +210,35 @@ for id, class_type in qos_dict.items():
         {'1:10': '1017032', '1:12': '0'}
         '''
         tx = tx_dict.get(class_id, 0)
-        stx = int(tx) + stx
-        results.append(result)
-    # write file
+        sum_tx = sum_tx + tx
+    #
     class_run_file  = "%s/%s" % (qos_run_root, id)
-    class_run_tmp   = "%s/%s.tmp" % (qos_run_root, id)
-
+    class_run_file_tmp = "%s/%s.tmp" % (qos_run_root, id)
     class_run_file_old = "%s/%s.1" % (qos_run_root, id)
+    class_run_file_old_tmp = "%s/%s.1.tmp" % (qos_run_root, id)
 
-    with open(class_run_tmp, 'w') as fw:
+    if os.path.exists(class_run_file_tmp):
+        shutil.copy(class_run_file_tmp, class_run_file_old_tmp)
+
+    with open(class_run_file_tmp, 'w') as fw:
         for res in results:
             fw.write("%s\n" % res)
-        fw.close()
 
     if os.path.exists(class_run_file):
-        os.rename(class_run_file, class_run_file_old)
+        shutil.copy(class_run_file, class_run_file_old)
+        # try:
+        #     subprocess.check_call("/bin/cp %s  %s" % (class_run_file, class_run_file_old))
+        # except:
+        #     pass
 
     with open(class_run_file, 'w') as f:
-        f.write("%s\n" % stx)
+        f.write("%s\n" % sum_tx)
+
+def crontab():
+    cron.enter(60, 0, crontab, ())
+    do()
+
+cron = sched.scheduler(time.time, time.sleep)
+# # 第一次任务，马上执行
+cron.enter(0, 0, crontab, ())
+cron.run()
