@@ -3,16 +3,17 @@
 import os
 import re
 import sys
-import time
-import sched
+# import time
+# import sched
 import shutil
 import subprocess
 
-qos_root     = "/usr/local/*/conf.d/qos"
-glink_root   = "/usr/local/*/conf.d/glink"
-tunnel_root  = "/usr/local/*/conf.d/tunnel"
-network_conf = "/etc/*/conf.d/network.conf"
-qos_run_root = '/var/run/*/qos'
+qos_root     = "/usr/local/xx/conf.d/qos"
+glink_root   = "/usr/local/xx/conf.d/glink"
+tunnel_root  = "/usr/local/xx/conf.d/tunnel"
+network_conf = "/etc/xx/conf.d/network.conf"
+qos_run_root = "/var/run/xx/qos"
+qos_run_root_tmp = "%s/tmp" % qos_run_root
 
 def get_qos_class_info():
     qos_class_mapping = {}
@@ -179,6 +180,9 @@ if len(qos_dict) == 0:
 if not os.path.exists(qos_run_root):
     os.makedirs(qos_run_root)
 
+if not os.path.exists(qos_run_root_tmp):
+    os.makedirs(qos_run_root_tmp)
+
 ret = {}
 for id, class_type in qos_dict.items():
     class_id = "1:%s" % id
@@ -212,13 +216,14 @@ for id, class_type in qos_dict.items():
         tx = tx_dict.get(class_id, 0)
         sum_tx = sum_tx + tx
     #
-    class_run_file  = "%s/%s" % (qos_run_root, id)
-    class_run_file_tmp = "%s/%s.tmp" % (qos_run_root, id)
+    class_run_file = "%s/%s" % (qos_run_root, id)
     class_run_file_old = "%s/%s.1" % (qos_run_root, id)
-    class_run_file_old_tmp = "%s/%s.1.tmp" % (qos_run_root, id)
+
+    class_run_file_tmp = "%s/%s" % (qos_run_root_tmp, id)
+    class_run_file_tmp_old = "%s/%s.1" % (qos_run_root_tmp, id)
 
     if os.path.exists(class_run_file_tmp):
-        shutil.copy(class_run_file_tmp, class_run_file_old_tmp)
+        shutil.copy(class_run_file_tmp, class_run_file_tmp_old)
 
     with open(class_run_file_tmp, 'w') as fw:
         for res in results:
@@ -234,11 +239,11 @@ for id, class_type in qos_dict.items():
     with open(class_run_file, 'w') as f:
         f.write("%s\n" % sum_tx)
 
-def crontab():
-    cron.enter(60, 0, crontab, ())
-    do()
+# def crontab():
+#     cron.enter(60, 0, crontab, ())
+#     do()
 
-cron = sched.scheduler(time.time, time.sleep)
+# cron = sched.scheduler(time.time, time.sleep)
 # # 第一次任务，马上执行
-cron.enter(0, 0, crontab, ())
-cron.run()
+# cron.enter(0, 0, crontab, ())
+# cron.run()

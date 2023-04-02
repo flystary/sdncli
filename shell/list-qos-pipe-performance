@@ -1,0 +1,39 @@
+#!/bin/bash
+
+source /etc/xx/conf.d/base.conf
+
+#统计1分钟带宽
+function do_qos_classid_get_bandwidth() {
+    local classid=$1
+    [ -e $run_path/qos/${classid} -a -e $run_path/qos/${classid}.1 ] || {
+        echo 0
+        return
+    }
+
+    tx=$(cat $run_path/qos/${classid}    2>/dev/null)
+    otx=$(cat $run_path/qos/${classid}.1 2>/dev/null)
+
+    if [ $otx -gt 0 -a $tx -gt 0 ] && [ $otx -le $tx ] 2>/dev/null;then
+        bandwidth_tx=$((8*($tx-$otx)/60))
+    else
+        bandwidth_tx=0
+    fi
+    echo $bandwidth_tx
+    return
+}
+
+for class in $(ls $cli_conf/qos/class*.conf 2>/dev/null|awk -F '/' '{gsub(".conf",""); print $NF}' 2>/dev/null)
+do
+    classid=${class##class}
+
+    if  [ $classid -gt 10 -a $classid -le 254 ] 2>/dev/null;then
+        # 每一分钟带宽
+        bandwidth_tx=($(do_qos_classid_get_bandwidth $classid))
+    else
+        bandwidth_tx=0
+    fi
+
+    echo $classid $bandwidth_tx
+done
+
+exit 0

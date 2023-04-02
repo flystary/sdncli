@@ -1,36 +1,34 @@
-wan_to_interface = {
-    "WAN1": "enp1s0",
-    "WAN2": "enp2s0"
-}
 
-lan_to_interface = {
-    "LAN1":  "enp3s0",
-    "LAN2":  "enp4s0",
-    "LAN3":  "enp5s0",
-    "LAN4":  "enp6s0",
-    "LAN5":  "enp7s0",
-    "LAN6":  "enp8s0"
-}
+import os
+import sys
 
-mobile_to_interface = {
-    "MOBILE4G": "usb4g",
-    "MOBILE5G": "usb5g"
-}
+NetworkConf = "/etc/xx/conf.d/network.conf"
 
-wifi_to_interface = {
-    "WIFI_IFNAME": "wlan0"
-}
+def get_interface_dict_by_file():
+    interface_dict = {}
+    if os.path.exists(NetworkConf):
+        abys = open(NetworkConf, 'r', encoding='UTF-8')
+        try:
+            for line in abys.readlines():
+                key, value = line.strip().split('=')
+                if key.startswith("#"):
+                    continue
+                interface_dict[key.strip()] = value.strip()
+        finally:
+            abys.close()
+    return interface_dict
 
-def get_interface_by_net(ifname):
+def get_interface_by_ifname(interface_dict, ifname):
     ifname = ifname.upper()
+    # interface_dict = get_network_interfaces_by_file()
     if ifname.startswith("WAN"):
-        return wan_to_interface.get(ifname, "").lower()
+        return interface_dict.get(ifname, "").lower()
     elif ifname.startswith('LAN'):
-        return lan_to_interface.get(ifname, "").lower()
+        return interface_dict.get(ifname, "").lower()
     elif  ifname.startswith("MOBILE"):
-        return mobile_to_interface.get(ifname, "").lower()
+        return interface_dict.get(ifname, "").lower()
     elif ifname.startswith("WIFI"):
-        return wifi_to_interface.get(ifname, "").lower()
+        return interface_dict.get(ifname, "").lower()
     elif ifname.startswith("VLAN"):
         return ifname.lower()
     elif ifname.startswith("BOND"):
