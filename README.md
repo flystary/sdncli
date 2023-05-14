@@ -1,7 +1,2 @@
-# test
-## scripts
-定时
-## shell
-云端调用
-## utils
+# NET
 应用实现
