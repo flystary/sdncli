@@ -34,20 +34,20 @@ pfl_tmpfile=/tmp/dyn_prefixlist.tmp
 rm_tmpfile=/tmp/dyn_routemap.tmp
 rm -f $as_tmpfile $pfl_tmpfile $rm_tmpfile
 
-jsonfilter -i $filename -e '@.*' 2>/de/null || {
+jsonfilter -i $filename -e '@.*' 2>/dev/null || {
     echo "json解析错误"
     exit 5
 }
 
-as_counter=$(jsonfilter -i $filename -e '@.asPath.*' |wc -l) || {
+as_counter=$(jsonfilter -i $filename -e '@.asPaths.*' |wc -l) || {
     echo "解析asPath错误"
     exit 6
 }
-pfl_counter=$(jsonfilter -i $filename -e '@.prefixList.*' |wc -l) || {
+pfl_counter=$(jsonfilter -i $filename -e '@.prefixLists.*' |wc -l) || {
     echo "解析prefixList错误"
     exit 7
 }
-rm_counter=$(jsonfilter -i $filename -e '@.routeMap.*' |wc -l) || {
+rm_counter=$(jsonfilter -i $filename -e '@.routeMaps.*' |wc -l) || {
     echo "解析routeMap错误"
     exit 8
 }
@@ -114,20 +114,20 @@ do
     [ -n "$rmname" ]    || exit 9
     [ $sequence -gt 0 ] || exit 9
 
-    set_counter=$(echo $matchs_tmp|jsonfilter -e '@.matchList[*]*' |wc -l)
-    match_counter=$(echo $sets_tmp|jsonfilter -e '@.setList[*]' |wc -l)
+    set_counter=$(echo $tmp|jsonfilter -e '@.setList[*]' |wc -l)
+    match_counter=$(echo $tmp|jsonfilter -e '@.matchList[*]' |wc -l)
 
     matchAsPath=
     matchPrefix=
     metric=
     localPreference=
-    asPathPrepend=
+    asPathPrepend=()
     [ $match_counter -gt 0 ] && for i in $(seq 0 $(($match_counter-1)))
     do
         line=$(($i+1))
-        tmp=$(jsonfilter -i $filename -e "@.matchList[$i]") &&\
-        match_type=$(echo $tmp |jsonfilter -e '@.matchType') &&\
-        match_value=$(echo $tmp |jsonfilter -e '@.matchValue') ||{
+        tmprmm=$(echo $tmp|jsonfilter -e "@.matchList[$i]") &&\
+        match_type=$(echo $tmprmm |jsonfilter -e '@.matchType') &&\
+        match_value=$(echo $tmprmm |jsonfilter -e '@.matchValue') ||{
             echo "第${line}条规则matchList json格式错误"
             error=true
             break
@@ -139,28 +139,28 @@ do
     [ $set_counter -gt 0 ] && for i in $(seq 0 $(($set_counter-1)))
     do
         line=$(($i+1))
-        tmp=$(jsonfilter -i $filename -e "@.setList[$i]") &&\
-        set_type=$(echo $tmp |jsonfilter -e '@.setType') &&\
-        set_value=$(echo $tmp |jsonfilter -e '@.setValue') ||{
+        tmprms=$(echo $tmp |jsonfilter -e "@.setList[$i]") &&\
+        set_type=$(echo $tmprms |jsonfilter -e '@.setType') &&\
+        set_value=$(echo $tmprms |jsonfilter -e '@.setValue') || {
             echo "第${line}条规则setList json格式错误"
             error=true
             break
         }
-        [ "$set_type" == "metric" ] &&  metric=$setValue
-        [ "$set_type" == "local-preference" ] && localPreference=$setValue
+        [ "$set_type" == "metric" ] &&  metric=$set_value
+        [ "$set_type" == "local-preference" ] && localPreference=$set_value
         # 去掉多余空格
-        [ "$set_type" == "as-path-prepend" ]  && asPathPrepend=$(echo $setValue)
+        [ "$set_type" == "as-path-prepend" ]  && asPathPrepend=$set_value
     done
 
     # 判断下发的是否存在asPath/prefixList的数据中
     gmatchAsPath=${global_prefix}${matchAsPath}
     gmatchPrefix=${global_prefix}${matchPrefix}
 
-    [ $(awk -v n=$gmatchAsPath '$1==n {print $0}' $as_tmpfile |wc -l) -eq 1 ]   || {
+    [ $(awk -v n=$gmatchAsPath '$1==n {print $0}' $as_tmpfile |wc -l) -ne 0 ]   || {
         echo "$matchAsPath 在asPaths中未找到此数据"
         exit 3
     }
-    [ $(awk -v n=$gmatchPrefix '$1==n {print $0}' $pfl_tmpfile | wc -l) -eq 1 ] || {
+    [ $(awk -v n=$gmatchPrefix '$1==n {print $0}' $pfl_tmpfile | wc -l) -ne 0 ] || {
         echo "$matchAsPath 在prefixLists中未找到此数据"
         exit 3
     }
@@ -172,7 +172,9 @@ do
     [ -n "$asPathPrepend" ]   || asPathPrepend=null
 
     name=${global_prefix}${rmname}
-    onlyNs=${rmname}|${sequence}
+
+    onlyNs="${name}|$sequence"
+
     newroutemaps+=(${onlyNs})
 
     echo $onlyNs $name $sequence $gmatchAsPath $gmatchPrefix $localPreference $metric $asPathPrepend >> $rm_tmpfile
@@ -195,14 +197,15 @@ done
 awk '$1$2$4=="ipprefix-listseq"{print $0}' $bgpd_conf 2>/dev/null |while read -a line
 do
     #tmp=($line)
+    echo ${line[*]}
     [ ${#line[*]} -lt 6 ] && continue
-    name=${line[3]}
-    sequence=${line[5]}
-    action=${line[6]}
-    cidr=${line[7]}
+    name=${line[2]}
+    sequence=${line[4]}
+    action=${line[5]}
+    cidr=${line[6]}
     # 老配置里有，新配置没有的as号要删除
-    [ $(awk -v p="$name $sequence $action $cidr" '$1==p{print 1}' $pfl_tmpfile |wc -l) -eq 0 ] && \
-        echo no ip prefix-list $name seq $sequence $cidr >> $dyncmdline
+    [ $(awk -F '|' -v p="$name $sequence $action $cidr" '$1==p{print 1}' $pfl_tmpfile |wc -l) -eq 0 ] && \
+        echo no ip prefix-list $name $sequence $action $cidr >> $dyncmdline
 done
 
 # 增加AsPath
@@ -304,7 +307,7 @@ do
     matchPrefix=${tmp[4]}
     localPreference=${tmp[5]}
     metric=${tmp[6]}
-    asPathPrepend=(${tmp[7]})
+    asPathPrepend=${tmp[*]:7}
 
     [ -n "$name" ] && [ "$name" != null ] && [ -n "$sequence" ] && [ $sequence -ge 0 ] || continue
 
@@ -313,7 +316,7 @@ do
     if [ "$matchAsPath" != null ];then
         echo match as-path $matchAsPath >> $dyncmdline
     else
-        echo no match as-path >> $dyncmdline
+        echo no match as-path $matchAsPath >> $dyncmdline
     fi
 
     if [ "$matchPrefix" != null ];then
@@ -353,7 +356,7 @@ do
     matchPrefix=${tmp[4]}
     localPreference=${tmp[5]}
     metric=${tmp[6]}
-    asPathPrepend=(${tmp[7]})
+    asPathPrepend=${tmp[*]:7}
 
    [ -n "$name" ] && [ "$name" != null ] && [ -n "$sequence" ] && [ $sequence -ge 0 ] || continue
 

@@ -253,18 +253,15 @@ with open(bgpd_conf) as f:
 if not success:
     sys.exit(2)
 
-print("new_aspath -> ", new_aspath)
-print("new_prefixlist -> ", new_prefixlist)
-print("new_routemap -> ", new_routemap)
+# print("new_aspath", new_aspath)
+# print("new_prefixlist", new_prefixlist)
+# print("new_routemap", new_routemap)
+# print()
 
-print()
-
-print("old_aspath -> ", old_aspath)
-print("old_prefixlist -> ", old_prefixlist)
-print("old_routemap -> ", old_routemap)
-
-print()
-sys.exit(2)
+# print("old_aspath", old_aspath)
+# print("old_prefixlist", old_prefixlist)
+# print("old_routemap", old_routemap)
+# print()
 
 # 执行文件
 vtyshcmd = '/tmp/dynamic_route_tmp'
