@@ -205,7 +205,7 @@ do
     cidr=${line[6]}
     # 老配置里有，新配置没有的as号要删除
     [ $(awk -F '|' -v p="$name $sequence $action $cidr" '$1==p{print 1}' $pfl_tmpfile |wc -l) -eq 0 ] && \
-        echo no ip prefix-list $name $sequence $action $cidr >> $dyncmdline
+        echo no ip prefix-list $name seq $sequence $action $cidr >> $dyncmdline
 done
 
 # 增加AsPath
