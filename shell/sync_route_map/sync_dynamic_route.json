@@ -1,0 +1,145 @@
+{
+    "asPaths": [
+        {
+            "action": "deny",
+            "actionValue": "70 80",
+            "name": "test-aspath1"
+        },
+        {
+            "action": "permit",
+            "actionValue": "^30 60 109$",
+            "name": "test-aspath1"
+        },
+        {
+            "action": "permit",
+            "actionValue": "500",
+            "name": "test-aspath2"
+        },
+        {
+            "action": "permit",
+            "actionValue": "700 800",
+            "name": "test-aspath3"
+        },
+        {
+            "action": "deny",
+            "actionValue": "500",
+            "name": "test-aspath4"
+        }
+    ],
+    "prefixLists": [
+        {
+            "name": "test-prefix1",
+            "seq": 300,
+            "action": "permit",
+            "cidr": "10.168.1.0/24"
+        },
+        {
+            "name": "test-prefix1",
+            "seq": 100,
+            "action": "deny",
+            "cidr": "10.168.2.0/24"
+        },
+        {
+            "name": "test-prefix2",
+            "seq": 200,
+            "action": "permit",
+            "cidr": "10.168.22.0/24"
+        },
+        {
+            "name": "test-prefix3",
+            "seq": 700,
+            "action": "deny",
+            "cidr": "10.168.3.0/24"
+        },
+        {
+            "name": "test-prefix4",
+            "seq": 300,
+            "action": "permit",
+            "cidr": "10.168.4.0/24"
+        },
+        {
+            "name": "test-prefix5",
+            "seq": 500,
+            "action": "deny",
+            "cidr": "10.168.5.0/24"
+        }
+    ],
+    "routeMaps": [
+        {
+            "name": "routemap1",
+            "seq": 120,
+            "matchList": [
+                {
+                    "matchType": "as-path",
+                    "matchValue": "test-aspath1"
+                },
+                {
+                    "matchType": "prefix-list",
+                    "matchValue": "test-prefix3"
+                }
+            ],
+            "setList": [
+                {
+                    "setType": "local-preference",
+                    "setValue": 100
+                },
+                {
+                    "setType": "as-path-prepend",
+                    "setValue": "200 600"
+                }
+            ]
+        },
+        {
+            "name": "routemap2",
+            "seq": 150,
+            "matchList": [
+                {
+                    "matchType": "as-path",
+                    "matchValue": "test-aspath3"
+                },
+                {
+                    "matchType": "prefix-list",
+                    "matchValue": "test-prefix3"
+                }
+            ],
+            "setList": [
+                {
+                    "setType": "local-preference",
+                    "setValue": 200
+                },
+                {
+                    "setType": "metric",
+                    "setValue": 600
+                },
+                {
+                    "setType": "as-path-prepend",
+                    "setValue": "10 30 200"
+                }
+            ]
+        },
+        {
+            "name": "routemap3",
+            "seq": 300,
+            "matchList": [
+                {
+                    "matchType": "as-path",
+                    "matchValue": "test-aspath4"
+                },
+                {
+                    "matchType": "prefix-list",
+                    "matchValue": "test-prefix4"
+                }
+            ],
+            "setList": [
+                {
+                    "setType": "local-preference",
+                    "setValue": 400
+                },
+                {
+                    "setType": "metric",
+                    "setValue": 500
+                }
+            ]
+        }
+    ]
+}

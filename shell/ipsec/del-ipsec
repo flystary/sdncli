@@ -40,7 +40,7 @@ except:
     sys.exit(4)
 
 try:
-    status = subprocess.check_call('/usr/local/*/lib/update_ipsec_policy.sh')
+    status = subprocess.check_call('/usr/local/svx/lib/update_ipsec_policy.sh')
 except:
     pass
 

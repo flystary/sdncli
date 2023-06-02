@@ -130,6 +130,9 @@ if rebroadcast_monitor:
 else:
     rekey = "no"
 
+if peer_status_probe in ["clear", "hold", "restart", "none"]:
+    dpdaction = peer_status_probe
+
 ipsec_cmd['type'] = mode
 
 #判断ikve类型
@@ -140,9 +143,9 @@ else:
     ipsec_cmd['keyexchange'] = 'ikev1'
     ipsec_cmd['rekey'] = rekey
     ipsec_cmd['aggressive'] = aggressive
+    ipsec_cmd["dpdaction"] = dpdaction
     if keep_alive > 0:
         ipsec_cmd['dpddelay'] = keep_alive
-
 
 #存活时间
 if encry_alive > 0:
@@ -192,13 +195,13 @@ ipsec_secrets.close()
 if not os.path.exists("/etc/strongswan/conntions.d"):
     os.makedirs("/etc/strongswan/conntions.d")
 # 将用户设置写入ipsec.conf
-conn = 'conn %s \n' % name
+conn = 'conn %s\n' % name
 path1 = "/etc/strongswan/conntions.d/%s.conf" % name
 
 with open(path1, 'w') as ipsec_conf:
     ipsec_conf.write(conn)
     for k, v in ipsec_cmd.items():
-        ipsec_conf.write('    %s=%s \n' % (k, v))
+        ipsec_conf.write('    %s=%s\n' % (k, v))
 
 ipsec_conf.close()
 
@@ -212,7 +215,7 @@ except:
     sys.exit(4)
 
 try:
-    subprocess.check_call('/usr/local/*/lib/update_ipsec_policy.sh', shell=True)
+    subprocess.check_call('/usr/local/svx/lib/update_ipsec_policy.sh', shell=True)
 except:
     pass
 
