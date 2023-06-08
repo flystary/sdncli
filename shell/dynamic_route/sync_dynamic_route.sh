@@ -8,7 +8,6 @@ while getopts "f:" opt; do
 done
 
 cmd_prefix='bgp'
-global_prefix='global-'
 
 [ ! -e "$filename" ] 2>/dev/null && exit 1
 typeset -l asname
@@ -19,7 +18,7 @@ typeset -l matchAsPath
 typeset -l matchPrefix
 
 source /etc/svxnetworks/conf.d/base.conf
-dyncmdline=/tmp/dynamic_route.frr
+dyncmdline=/tmp/vtysh_dynamic_route.cmd
 echo "configure terminal" > $dyncmdline
 
 error=false
@@ -61,14 +60,13 @@ do
     tmp=$(jsonfilter -i $filename -e "@.asPaths[$i]") &&\
     action=$(echo $tmp |jsonfilter -e '@.action') &&\
     value=$(echo $tmp |jsonfilter -e '@.actionValue') &&\
-    asname=$(echo $tmp |jsonfilter -e '@.name') || {
+    name=$(echo $tmp |jsonfilter -e '@.name') || {
         echo "第${line}条规则asPath json格式错误"
         error=true
         break
     }
 
-    [ -n "$asname" ] || exit 9
-    name=${global_prefix}${asname}
+    [ -n "$name" ] || exit 9
     # 去掉多余空格
     value=$(echo $value)
 
@@ -84,15 +82,15 @@ do
     sequence=$(echo $tmp |jsonfilter -e '@.seq') &&\
     action=$(echo $tmp |jsonfilter -e '@.action') &&\
     cidr=$(echo $tmp |jsonfilter -e '@.cidr') &&\
-    pflname=$(echo $tmp |jsonfilter -e '@.name') || {
+    name=$(echo $tmp |jsonfilter -e '@.name') || {
         echo "第${line}条规则prefixLists json格式错误"
         error=true
         break
     }
 
-    [ -n "$pflname" ]   || exit 9
+    [ -n "$name" ]   || exit 9
     [ $sequence -gt 0 ] || exit 9
-    name=${global_prefix}${pflname}
+
 
     [ -n "$action" ] || action=null
     [ -n "$cidr" ]   || cidr=null
@@ -105,13 +103,13 @@ do
     line=$(($i+1))
     tmp=$(jsonfilter -i $filename -e "@.routeMaps[$i]") &&\
     sequence=$(echo $tmp |jsonfilter -e '@.seq') &&\
-    rmname=$(echo $tmp |jsonfilter -e '@.name') || {
+    name=$(echo $tmp |jsonfilter -e '@.name') || {
         echo "第${line}条规则routeMap json格式错误"
         error=true
         break
     }
 
-    [ -n "$rmname" ]    || exit 9
+    [ -n "$name" ]    || exit 9
     [ $sequence -gt 0 ] || exit 9
 
     set_counter=$(echo $tmp|jsonfilter -e '@.setList[*]' |wc -l)
@@ -153,60 +151,55 @@ do
     done
 
     # 判断下发的是否存在asPath/prefixList的数据中
-    gmatchAsPath=${global_prefix}${matchAsPath}
-    gmatchPrefix=${global_prefix}${matchPrefix}
-
-    [ $(awk -v n=$gmatchAsPath '$1==n {print $0}' $as_tmpfile |wc -l) -ne 0 ]   || {
+    [ $(awk -v n=$matchAsPath '$1==n {print $0}' $as_tmpfile |wc -l) -ne 0 ]   || {
         echo "$matchAsPath 在asPaths中未找到此数据"
         exit 3
     }
-    [ $(awk -v n=$gmatchPrefix '$1==n {print $0}' $pfl_tmpfile | wc -l) -ne 0 ] || {
+    [ $(awk -v n=$matchPrefix '$1==n {print $0}' $pfl_tmpfile | wc -l) -ne 0 ] || {
         echo "$matchAsPath 在prefixLists中未找到此数据"
         exit 3
     }
 
-    [ -n "$matchAsPath" ]     || gmatchAsPath=null
-    [ -n "$matchPrefix" ]     || gmatchPrefix=null
+    [ -n "$matchAsPath" ]     || matchAsPath=null
+    [ -n "$matchPrefix" ]     || matchPrefix=null
     [ -n "$metric" ]          || metric=0
     [ -n "$localPreference" ] || localPreference=0
     [ -n "$asPathPrepend" ]   || asPathPrepend=null
-
-    name=${global_prefix}${rmname}
 
     onlyNs="${name}|$sequence"
 
     newroutemaps+=(${onlyNs})
 
-    echo $onlyNs $name $sequence $gmatchAsPath $gmatchPrefix $localPreference $metric $asPathPrepend >> $rm_tmpfile
+    echo $onlyNs $name $sequence $matchAsPath $matchPrefix $localPreference $metric $asPathPrepend >> $rm_tmpfile
 done
 
-# 删除旧AsPath
-awk '$2$3=="as-pathaccess-list"{print $0}' $bgpd_conf 2>/dev/null |while read -a line
+# 删除AsPath
+# name action value
+while read line
 do
-    #tmp=($line)
-    [ ${#line[*]} -lt 6 ] && continue
-    name=${line[3]}
-    action=${line[4]}
-    value=${line[*]:5}
+    tmp=($line)
+    [ ${#line[*]} -lt 3 ] && continue
+    name=${tmp[0]}
+    action=${tmp[1]}
+    value=${tmp[*]:2}
     # 老配置里有，新配置没有的as号要删除
     [ $(awk -F'/' -v p="$name $action $value" '$1==p{print 1}' $as_tmpfile |wc -l) -eq 0 ] && \
         echo no $cmd_prefix as-path access-list $name $action $value >> $dyncmdline
-done
+done < $as_path_conf
 
 # 删除PrefixList
-awk '$1$2$4=="ipprefix-listseq"{print $0}' $bgpd_conf 2>/dev/null |while read -a line
+# name sequence action cidr
+while read line
 do
-    #tmp=($line)
-    echo ${line[*]}
-    [ ${#line[*]} -lt 6 ] && continue
-    name=${line[2]}
-    sequence=${line[4]}
-    action=${line[5]}
-    cidr=${line[6]}
+    tmp=($line)
+    name=${tmp[0]}
+    sequence=${tmp[1]}
+    action=${tmp[2]}
+    cidr=${tmp[3]}
     # 老配置里有，新配置没有的as号要删除
     [ $(awk -F '|' -v p="$name $sequence $action $cidr" '$1==p{print 1}' $pfl_tmpfile |wc -l) -eq 0 ] && \
         echo no ip prefix-list $name seq $sequence $action $cidr >> $dyncmdline
-done
+done < $prefix_list_conf
 
 # 增加AsPath
 while read line
@@ -215,6 +208,7 @@ do
     name=${tmp[0]}
     action=${tmp[1]}
     value=${tmp[*]:2}
+    [ $(awk -F'/' -v p="$name $action $value" '$1==p{print 1}' $as_path_conf |wc -l) -eq 0 ] || continue
     echo $cmd_prefix as-path access-list $name $action $value >> $dyncmdline
 done < $as_tmpfile
 
@@ -226,6 +220,7 @@ do
     sequence=${tmp[1]}
     action=${tmp[2]}
     cidr=${tmp[3]}
+    [ $(awk -F '|' -v p="$name $sequence $action $cidr" '$1==p{print 1}' $prefix_list_conf |wc -l) -eq 0 ] || continue
     echo ip prefix-list $name seq $sequence $action $cidr >> $dyncmdline
 done < $pfl_tmpfile
 
