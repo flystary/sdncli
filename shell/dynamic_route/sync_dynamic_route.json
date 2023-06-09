@@ -67,6 +67,7 @@
     "routeMaps": [
         {
             "name": "routemap1",
+            "action": "permit",
             "seq": 120,
             "matchList": [
                 {
@@ -91,6 +92,7 @@
         },
         {
             "name": "routemap2",
+            "action": "deny",
             "seq": 150,
             "matchList": [
                 {
@@ -119,6 +121,7 @@
         },
         {
             "name": "routemap3",
+            "action": "permit",
             "seq": 300,
             "matchList": [
                 {

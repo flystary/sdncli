@@ -9,6 +9,8 @@ done
 
 cmd_prefix='bgp'
 
+#cmd_prefix='ip'
+
 [ ! -e "$filename" ] 2>/dev/null && exit 1
 typeset -l asname
 typeset -l pflname
@@ -103,12 +105,14 @@ do
     line=$(($i+1))
     tmp=$(jsonfilter -i $filename -e "@.routeMaps[$i]") &&\
     sequence=$(echo $tmp |jsonfilter -e '@.seq') &&\
+    action=$(echo $tmp |jsonfilter -e '@.action') &&\
     name=$(echo $tmp |jsonfilter -e '@.name') || {
         echo "第${line}条规则routeMap json格式错误"
         error=true
         break
     }
 
+    [ -n "$action" ]  || action=null
     [ -n "$name" ]    || exit 9
     [ $sequence -gt 0 ] || exit 9
 
@@ -170,7 +174,7 @@ do
 
     newroutemaps+=(${onlyNs})
 
-    echo $onlyNs $name $sequence $matchAsPath $matchPrefix $localPreference $metric $asPathPrepend >> $rm_tmpfile
+    echo $onlyNs $name $action $sequence $matchAsPath $matchPrefix $localPreference $metric $asPathPrepend >> $rm_tmpfile
 done
 
 # 删除AsPath
@@ -280,14 +284,15 @@ fi
 for onlyns in ${del_routemaps[*]}
 do
     tmp=($(awk -v ns=$onlyns '$1==ns{print $0}' $route_map_conf 2>/dev/null))
-    # $onlyNs $name $sequence $matchAsPath $matchPrefix $localPreference $metric $asPathPrepend
+    # $onlyNs $name $action $sequence $matchAsPath $matchPrefix $localPreference $metric $asPathPrepend
     onlyns=${tmp[0]}
     name=${tmp[1]}
-    sequence=${tmp[2]}
+    action=${tmp[2]}
+    sequence=${tmp[3]}
 
-    [ -n "$name" ] && [ "$name" != null ] && [ -n "$sequence" ] && [ $sequence -ge 0 ] || continue
+    [ -n "$name" ] && [ "$name" != null ] &&  [ -n "$action" ] && [ "$action" != null ] && [ -n "$sequence" ] && [ $sequence -ge 0 ] || continue
 
-    echo no route-map $name permit $sequence >> $dyncmdline
+    echo no route-map $name $action $sequence >> $dyncmdline
 done
 
 # 比较
@@ -297,16 +302,17 @@ do
     tmp=($(awk -v ns=$onlyns '$1==ns{print $0}' $rm_tmpfile 2>/dev/null))
     onlyns=${tmp[0]}
     name=${tmp[1]}
-    sequence=${tmp[2]}
-    matchAsPath=${tmp[3]}
-    matchPrefix=${tmp[4]}
-    localPreference=${tmp[5]}
-    metric=${tmp[6]}
-    asPathPrepend=${tmp[*]:7}
+    action=${tmp[2]}
+    sequence=${tmp[3]}
+    matchAsPath=${tmp[4]}
+    matchPrefix=${tmp[5]}
+    localPreference=${tmp[6]}
+    metric=${tmp[7]}
+    asPathPrepend=${tmp[*]:8}
 
-    [ -n "$name" ] && [ "$name" != null ] && [ -n "$sequence" ] && [ $sequence -ge 0 ] || continue
+    [ -n "$name" ] && [ "$name" != null ] &&  [ -n "$action" ] && [ "$action" != null ] && [ -n "$sequence" ] && [ $sequence -ge 0 ] || continue
 
-    echo route-map $name permit $sequence >> $dyncmdline
+    echo route-map $name $action $sequence >> $dyncmdline
 
     if [ "$matchAsPath" != null ];then
         echo match as-path $matchAsPath >> $dyncmdline
@@ -346,16 +352,17 @@ do
     tmp=($(awk -v ns=$onlyns '$1==ns{print $0}' $rm_tmpfile 2>/dev/null))
     onlyns=${tmp[0]}
     name=${tmp[1]}
-    sequence=${tmp[2]}
-    matchAsPath=${tmp[3]}
-    matchPrefix=${tmp[4]}
-    localPreference=${tmp[5]}
-    metric=${tmp[6]}
-    asPathPrepend=${tmp[*]:7}
+    action=${tmp[2]}
+    sequence=${tmp[3]}
+    matchAsPath=${tmp[4]}
+    matchPrefix=${tmp[5]}
+    localPreference=${tmp[6]}
+    metric=${tmp[7]}
+    asPathPrepend=${tmp[*]:8}
 
-   [ -n "$name" ] && [ "$name" != null ] && [ -n "$sequence" ] && [ $sequence -ge 0 ] || continue
+    [ -n "$name" ] && [ "$name" != null ] &&  [ -n "$action" ] && [ "$action" != null ] && [ -n "$sequence" ] && [ $sequence -ge 0 ] || continue
 
-    echo route-map $name permit $sequence >> $dyncmdline
+    echo route-map $name $action $sequence >> $dyncmdline
 
     [ "$matchAsPath" != null ] && {
         echo match as-path $matchAsPath >> $dyncmdline

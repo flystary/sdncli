@@ -12,7 +12,6 @@ from svxutil.baseconf import *
 
 cmd_prefix = 'bgp'
 
-
 # 获取命令参数
 try:
     opts, args = getopt.getopt(sys.argv[1:], "f:", ["help", "file="],)
@@ -47,7 +46,7 @@ try:
     for index, asPath in enumerate(asPaths):
         try:
             name   = asPath.get("name").strip().lower()
-            action = asPath.get("action", 'permit').strip().lower()
+            action = asPath.get("action").strip().lower()
             value  = asPath.get("actionValue").strip().lower()
         except:
             raise svxnetworksError('asPath %s 数据获取失败!' % index)
@@ -82,6 +81,7 @@ try:
     for index, routeMap in enumerate(routeMaps):
         try:
             name = routeMap.get("name").strip().lower()
+            action = routeMap.get("action").strip().lower()
             sequence = routeMap.get("seq", 0)
             matchList = routeMap.get("matchList", [])
             setList   = routeMap.get("setList", [])
@@ -91,12 +91,13 @@ try:
             metric = 0
             asPathPrepend = ""
 
-            if name == "" or sequence <= 0:
-                raise svxnetworksError('routeMap中 %s 的name或sequence错误!' % index)
+            if name == "" or action == "" or sequence <= 0:
+                raise svxnetworksError('routeMap中 %s 的name或action或sequence错误!' % index)
 
             onlyNsdict = {}
             onlyNs = '%s|%s' % (name, sequence)
             onlyNsdict["name"] = name
+            onlyNsdict["action"] = action
             onlyNsdict["sequence"] = sequence
 
             for match_dict in matchList:
@@ -242,17 +243,19 @@ for onlyns in old_routemap.keys():
 for onlyns in del_routemaps:
     value_dict =  old_routemap[onlyns]
     name        = value_dict.get("name", "")
+    action      = value_dict.get("action", "")
     sequence    = value_dict.get("sequence", 0)
 
-    if name == "" or sequence <= 0:
+    if name == "" or action == "" or sequence <= 0:
         continue
 
-    vtysh_fp.write("no route-map %s permit %s\n" % (name, sequence))
+    vtysh_fp.write("no route-map %s %s %s\n" % (name, action, sequence))
 
 # 对比
 for onlyns in same_routemaps:
     value_dict =  new_routemap[onlyns]
     name        = value_dict.get("name", "")
+    action      = value_dict.get("action", "")
     sequence    = value_dict.get("sequence", 0)
     matchAsPath = value_dict.get("matchAsPath", "")
     matchPrefix = value_dict.get("matchPrefix", "")
@@ -260,10 +263,10 @@ for onlyns in same_routemaps:
     metric      = int(value_dict.get("metric", 0))
     asPathPrepend   = value_dict.get("asPathPrepend", "")
 
-    if name == "" or sequence <= 0:
+    if name == "" or action == "" or sequence <= 0:
         continue
 
-    vtysh_fp.write("route-map %s permit %s\n" % (name, sequence))
+    vtysh_fp.write("route-map %s %s %s\n" % (name, action, sequence))
 
     if matchAsPath == "":
         vtysh_fp.write("no match as-path\n")
@@ -294,6 +297,7 @@ for onlyns in same_routemaps:
 for onlyns in add_routemaps:
     value_dict =  new_routemap[onlyns]
     name        = value_dict.get("name", "")
+    action      = value_dict.get("action", "")
     sequence    = value_dict.get("sequence", 0)
     matchAsPath = value_dict.get("matchAsPath", "")
     matchPrefix = value_dict.get("matchPrefix", "")
@@ -301,10 +305,10 @@ for onlyns in add_routemaps:
     metric      = int(value_dict.get("metric", 0))
     asPathPrepend   = value_dict.get("asPathPrepend", "")
 
-    if name == "" or sequence <= 0:
+    if name == "" or action == "" or sequence <= 0:
         continue
 
-    vtysh_fp.write("route-map %s permit %s\n" % (name, sequence))
+    vtysh_fp.write("route-map %s %s %s\n" % (name, action, sequence))
 
     if matchAsPath != "":
         vtysh_fp.write("match as-path %s\n" %  matchAsPath)
